@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sudoku Expert</title>
+<meta name="description" content="Sudoku niveau expert avec indices progressifs, notes et chronomètre. Jouable hors ligne.">
+<meta name="theme-color" content="#E3E9EB" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1316" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sudoku">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Chivo+Mono:wght@400..700&display=swap">
+<style>
+html{color-scheme:light;background:var(--bg);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;min-height:100dvh}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<style>
+/* Mise en page : une colonne, la grille prend toute la largeur, chiffres en chasse fixe sur papier millimétré froid */
+:root{
+  --bg:#E3E9EB; --paper:#F8FAF9; --ink:#17262D; --muted:#53686F;
+  --line:#BFCCD0; --line-strong:#2B414C;
+  --user:#2748BD; --accent:#1F6F78; --on-accent:#FFFFFF;
+  --hint:#F0B02E; --hint-soft:#FAE3A6; --on-hint:#17262D;
+  --err:#B82525; --err-soft:#F5D0CC;
+  --sel:#B9D2F3; --peer:#E8EFF1; --same:#CFE0F8;
+  --btn:#FFFFFF;
+  --font-ui:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-num:"Chivo Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1316; --paper:#161E23; --ink:#E4ECEF; --muted:#8FA3AB;
+    --line:#2A3A42; --line-strong:#7E98A4;
+    --user:#8FA8FF; --accent:#5FC0C9; --on-accent:#0E1316;
+    --hint:#E3AE35; --hint-soft:#4A3B12; --on-hint:#17262D;
+    --err:#FF8076; --err-soft:#4A2123;
+    --sel:#25466F; --peer:#1D2A31; --same:#2A4568;
+    --btn:#1D2A31;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1316; --paper:#161E23; --ink:#E4ECEF; --muted:#8FA3AB;
+  --line:#2A3A42; --line-strong:#7E98A4;
+  --user:#8FA8FF; --accent:#5FC0C9; --on-accent:#0E1316;
+  --hint:#E3AE35; --hint-soft:#4A3B12; --on-hint:#17262D;
+  --err:#FF8076; --err-soft:#4A2123;
+  --sel:#25466F; --peer:#1D2A31; --same:#2A4568;
+  --btn:#1D2A31;
+  color-scheme:dark;
+}
+
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--font-ui);
+  padding-block:16px 28px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-tap-highlight-color:transparent;
+}
+button{font:inherit;color:inherit;appearance:none;-webkit-appearance:none;margin:0;cursor:pointer}
+.app{max-width:500px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.level{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);border:1.5px solid var(--accent);border-radius:4px;padding:3px 6px}
+.timer{font-family:var(--font-num);font-size:22px;font-variant-numeric:tabular-nums;font-weight:500}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat span{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.stat b{font-family:var(--font-num);font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}
+
+.board{
+  width:100%;aspect-ratio:1;max-width:100%;container-type:inline-size;
+  display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);
+  background:var(--paper);border:2px solid var(--line-strong);border-radius:6px;overflow:hidden;
+  user-select:none;-webkit-user-select:none;touch-action:manipulation;
+}
+.cell{
+  position:relative;display:flex;align-items:center;justify-content:center;min-width:0;padding:0;
+  background:transparent;border:0;border-radius:0;
+  border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+  font-family:var(--font-num);color:var(--ink);line-height:1;
+  font-size:clamp(18px,6.2vw,31px);
+  font-size:calc(100cqw / 9 * .58);
+}
+.cell.br{border-right:2px solid var(--line-strong)}
+.cell.bb{border-bottom:2px solid var(--line-strong)}
+.cell:nth-child(9n){border-right:0}
+.cell:nth-child(n+73){border-bottom:0}
+.cell.given{font-weight:700}
+.cell.user{font-weight:500;color:var(--user)}
+.cell.peer{background:var(--peer)}
+.cell.same{background:var(--same)}
+.cell.wrong{color:var(--err);background:var(--err-soft)}
+.cell.hu{background:var(--hint-soft)}
+.cell.sel{background:var(--sel)}
+.cell.ht{background:var(--hint);color:var(--on-hint)}
+.cell:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;z-index:1}
+.notes{
+  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);width:100%;height:100%;
+  font-size:clamp(8px,2.3vw,12px);
+  font-size:calc(100cqw / 9 * .25);
+  color:var(--muted);font-weight:500;
+}
+.notes i{font-style:normal;display:flex;align-items:center;justify-content:center}
+
+.msg{
+  margin:0;min-height:4.4em;padding:10px 12px;border-radius:8px;
+  background:var(--paper);border:1px solid var(--line);
+  font-size:15px;line-height:1.4;text-wrap:pretty;
+}
+.msg.hint{background:var(--hint-soft);border-color:var(--hint)}
+.msg.win{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+
+.tools{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tool{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  height:58px;padding:0 4px;background:var(--btn);border:1px solid var(--line);border-radius:10px;
+  font-size:12.5px;font-weight:600;
+}
+.tool svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tool[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.tool.hintbtn svg{stroke:var(--hint)}
+.tool.hintbtn.live{border-color:var(--hint);box-shadow:inset 0 0 0 1px var(--hint)}
+
+.pad{display:grid;grid-template-columns:repeat(9,1fr);gap:5px}
+.key{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  height:60px;padding:0;background:var(--btn);border:1px solid var(--line);border-radius:8px;
+}
+.key .kd{font-family:var(--font-num);font-size:24px;font-weight:500;line-height:1}
+.key .kc{font-family:var(--font-num);font-size:10px;color:var(--muted);line-height:1;font-variant-numeric:tabular-nums}
+.key:disabled{opacity:.3;cursor:default}
+
+.foot{display:flex;justify-content:center}
+.newgame{background:transparent;border:1px solid var(--line-strong);border-radius:10px;padding:11px 18px;font-weight:600;font-size:14px}
+.newgame.confirm{background:var(--err);border-color:var(--err);color:#fff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .newgame.confirm{color:#17262D}}
+:root[data-theme="dark"] .newgame.confirm{color:#17262D}
+
+.tool:focus-visible,.key:focus-visible,.newgame:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion: no-preference){
+  .cell{transition:background-color .12s}
+}
+@media (max-width:360px){
+  h1{font-size:26px}
+  .key{height:54px}
+  .key .kd{font-size:21px}
+}
+</style>
+
+<main class="app">
+  <header class="top">
+    <div class="brand"><h1>Sudoku</h1><span class="level">Expert</span></div>
+    <div class="timer" id="timer" aria-label="Temps écoulé">00:00</div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><span>Données</span><b id="sGiven">–</b></div>
+    <div class="stat"><span>Restantes</span><b id="sLeft">–</b></div>
+    <div class="stat"><span>Erreurs</span><b id="sMist">0</b></div>
+    <div class="stat"><span>Indices</span><b id="sHints">0</b></div>
+  </div>
+
+  <div class="board" id="board" role="group" aria-label="Grille de Sudoku"></div>
+
+  <p class="msg" id="msg" role="status" aria-live="polite"></p>
+
+  <div class="tools">
+    <button type="button" class="tool" id="undoBtn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+      <span>Annuler</span>
+    </button>
+    <button type="button" class="tool" id="eraseBtn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l9.6-9.6a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+      <span>Effacer</span>
+    </button>
+    <button type="button" class="tool" id="notesBtn" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+      <span>Notes</span>
+    </button>
+    <button type="button" class="tool hintbtn" id="hintBtn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+      <span id="hintLbl">Indice</span>
+    </button>
+  </div>
+
+  <div class="pad" id="pad"></div>
+
+  <div class="foot"><button type="button" class="newgame" id="newBtn">Nouvelle grille</button></div>
+</main>
+
+<script>
+'use strict';
+/* ---------- Logique pure : indices de lignes, colonnes, blocs ---------- */
+const R=[],C=[],B=[];
+for(let i=0;i<81;i++){R[i]=(i/9)|0;C[i]=i%9;B[i]=((R[i]/3)|0)*3+((C[i]/3)|0);}
+const PEERS=[];
+for(let i=0;i<81;i++){PEERS[i]=[];for(let j=0;j<81;j++){if(j!==i&&(R[j]===R[i]||C[j]===C[i]||B[j]===B[i]))PEERS[i].push(j);}}
+const UNITS=[];
+for(let n=0;n<9;n++){
+  const row=[],col=[],box=[];
+  for(let i=0;i<81;i++){if(R[i]===n)row.push(i);if(C[i]===n)col.push(i);if(B[i]===n)box.push(i);}
+  UNITS.push({kind:'box',n:n,cells:box},{kind:'row',n:n,cells:row},{kind:'col',n:n,cells:col});
+}
+function pc(x){x=x-((x>>1)&0x55555555);x=(x&0x33333333)+((x>>2)&0x33333333);return Math.imul((x+(x>>4))&0x0F0F0F0F,0x01010101)>>>24;}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;const t=a[i];a[i]=a[j];a[j]=t;}return a;}
+
+/* Recherche avec bitmasks : compte les solutions (jusqu'à limit) et garde la première */
+function search(grid,limit,randomize){
+  const g=grid.slice(),rU=new Array(9).fill(0),cU=new Array(9).fill(0),bU=new Array(9).fill(0);
+  for(let i=0;i<81;i++){if(g[i]){const b=1<<g[i];rU[R[i]]|=b;cU[C[i]]|=b;bU[B[i]]|=b;}}
+  let count=0,first=null;
+  function rec(){
+    let best=-1,bm=0,bn=10;
+    for(let i=0;i<81;i++){
+      if(g[i]===0){
+        const m=~(rU[R[i]]|cU[C[i]]|bU[B[i]])&0x3FE,n=pc(m);
+        if(n<bn){bn=n;best=i;bm=m;if(n<2)break;}
+      }
+    }
+    if(best<0){count++;if(!first)first=g.slice();return count>=limit;}
+    if(bn===0)return false;
+    const digits=[];
+    for(let d=1;d<=9;d++){if(bm&(1<<d))digits.push(d);}
+    if(randomize)shuffle(digits);
+    const r=R[best],c=C[best],b=B[best];
+    for(const d of digits){
+      const bit=1<<d;g[best]=d;rU[r]|=bit;cU[c]|=bit;bU[b]|=bit;
+      if(rec())return true;
+      rU[r]&=~bit;cU[c]&=~bit;bU[b]&=~bit;
+    }
+    g[best]=0;return false;
+  }
+  rec();
+  return {count:count,first:first};
+}
+
+/* Candidats de chaque case d'après les chiffres posés */
+function cands(g){
+  const rU=new Array(9).fill(0),cU=new Array(9).fill(0),bU=new Array(9).fill(0),m=new Array(81).fill(0);
+  for(let i=0;i<81;i++){if(g[i]){const b=1<<g[i];rU[R[i]]|=b;cU[C[i]]|=b;bU[B[i]]|=b;}}
+  for(let i=0;i<81;i++){if(!g[i])m[i]=~(rU[R[i]]|cU[C[i]]|bU[B[i]])&0x3FE;}
+  return m;
+}
+/* Singles cachés (une seule place dans une zone) et singles nus (un seul candidat dans la case) */
+function findSingles(g){
+  const m=cands(g),out=[];
+  for(const u of UNITS){
+    for(let d=1;d<=9;d++){
+      const bit=1<<d;let present=false,n=0,place=-1;
+      for(const i of u.cells){
+        if(g[i]===d){present=true;break;}
+        if(g[i]===0&&(m[i]&bit)){n++;place=i;}
+      }
+      if(!present&&n===1)out.push({cell:place,v:d,type:'hidden',unit:u});
+    }
+  }
+  for(let i=0;i<81;i++){
+    if(!g[i]&&pc(m[i])===1)out.push({cell:i,v:31-Math.clz32(m[i]),type:'naked'});
+  }
+  return out;
+}
+function singlesSolvable(p){
+  const g=p.slice();
+  for(;;){
+    if(g.every(x=>x))return true;
+    const s=findSingles(g);
+    if(!s.length)return false;
+    g[s[0].cell]=s[0].v;
+  }
+}
+/* Grille expert : peu de cases données, solution unique, impossible à finir avec les seuls singles */
+function makePuzzle(){
+  const t0=Date.now();let best=null;
+  for(;;){
+    const sol=search(new Array(81).fill(0),1,true).first;
+    const p=sol.slice(),order=shuffle(Array.from({length:81},(_,i)=>i));
+    let clues=81;
+    for(const i of order){
+      if(clues<=24)break;
+      const keep=p[i];p[i]=0;
+      if(search(p,2,false).count!==1)p[i]=keep;else clues--;
+    }
+    const ok=clues<=27&&!singlesSolvable(p);
+    if(ok)return {p:p,sol:sol,clues:clues};
+    if(!best||clues<best.clues)best={p:p.slice(),sol:sol,clues:clues};
+    if(Date.now()-t0>3500)return best;
+  }
+}
+/*UI*/
+
+/* ---------- Interface ---------- */
+const $=id=>document.getElementById(id);
+const KEY='sudoku-expert-v1';
+const BOXNAMES=['en haut à gauche','en haut au centre','en haut à droite','au milieu à gauche','au centre','au milieu à droite','en bas à gauche','en bas au centre','en bas à droite'];
+
+function blank(){
+  return {puz:new Array(81).fill(0),sol:new Array(81).fill(0),val:new Array(81).fill(0),notes:new Array(81).fill(0),
+    sel:-1,notesOn:false,t:0,mistakes:0,hints:0,hist:[],hint:null,done:false,busy:true,flash:'',clues:0};
+}
+let S=blank();
+function fresh(g){
+  const s=blank();
+  s.puz=g.p.slice();s.val=g.p.slice();s.sol=g.sol.slice();s.clues=g.clues;s.busy=false;
+  return s;
+}
+function save(){
+  try{
+    localStorage.setItem(KEY,JSON.stringify({puz:S.puz,sol:S.sol,val:S.val,notes:S.notes,t:S.t,mistakes:S.mistakes,hints:S.hints,clues:S.clues,done:S.done}));
+  }catch(e){}
+}
+function load(){
+  try{
+    const j=JSON.parse(localStorage.getItem(KEY)||'null');
+    if(j&&!j.done&&[j.puz,j.sol,j.val,j.notes].every(a=>Array.isArray(a)&&a.length===81)){
+      const s=blank();
+      s.puz=j.puz;s.sol=j.sol;s.val=j.val;s.notes=j.notes;
+      s.t=j.t|0;s.mistakes=j.mistakes|0;s.hints=j.hints|0;s.clues=j.clues|0;s.busy=false;
+      return s;
+    }
+  }catch(e){}
+  return null;
+}
+function fmt(t){
+  const h=(t/3600)|0,m=((t%3600)/60)|0,s=t%60,p=n=>String(n).padStart(2,'0');
+  return h?h+':'+p(m)+':'+p(s):p(m)+':'+p(s);
+}
+
+/* Construction de la grille et du pavé */
+const boardEl=$('board'),cells=[];
+for(let i=0;i<81;i++){
+  const b=document.createElement('button');
+  b.type='button';b.className='cell';
+  b.addEventListener('click',()=>selectCell(i));
+  boardEl.appendChild(b);cells.push(b);
+}
+const padEl=$('pad'),keys=[];
+for(let d=1;d<=9;d++){
+  const b=document.createElement('button');
+  b.type='button';b.className='key';b.setAttribute('aria-label','Chiffre '+d);
+  b.innerHTML='<span class="kd">'+d+'</span><span class="kc"></span>';
+  b.addEventListener('click',()=>setDigit(d));
+  padEl.appendChild(b);keys.push(b);
+}
+
+function notesHtml(mask){
+  let h='<span class="notes" aria-hidden="true">';
+  for(let d=1;d<=9;d++)h+='<i>'+((mask&(1<<d))?d:'')+'</i>';
+  return h+'</span>';
+}
+function unitName(u){
+  if(u.kind==='box')return 'le bloc '+BOXNAMES[u.n];
+  if(u.kind==='row')return 'la ligne '+(u.n+1);
+  return 'la colonne '+(u.n+1);
+}
+function hintText(h){
+  const r=R[h.cell]+1,c=C[h.cell]+1;
+  if(h.kind==='error')return 'Une erreur s’est glissée dans la case ligne '+r+', colonne '+c+'. Ce chiffre n’est pas le bon.';
+  if(h.kind==='hidden'){
+    if(h.stage===1)return 'Regarde '+unitName(h.unit)+' : où peut aller le '+h.v+' ?';
+    return 'Dans '+unitName(h.unit)+', le '+h.v+' n’a qu’une seule place possible : ligne '+r+', colonne '+c+'. Toutes les autres cases libres de cette zone sont déjà bloquées pour le '+h.v+'.';
+  }
+  if(h.kind==='naked'){
+    if(h.stage===1)return 'Regarde la case ligne '+r+', colonne '+c+'. Quels chiffres restent possibles quand on lit sa ligne, sa colonne et son bloc ?';
+    return 'Il n’en reste qu’un : le '+h.v+'. Tous les autres chiffres sont déjà présents dans sa ligne, sa colonne ou son bloc.';
+  }
+  return 'Aucune case ne se résout par simple élimination. Celle-ci est la plus contrainte, avec '+h.n+' chiffres possibles. Une technique avancée (paire nue, X-Wing…) ou les notes peuvent aider.';
+}
+function hintHL(){
+  const hl={unit:new Set(),cell:-1},h=S.hint;
+  if(!h)return hl;
+  if(h.kind==='hidden'){
+    h.unit.cells.forEach(i=>hl.unit.add(i));
+    if(h.stage>=2)hl.cell=h.cell;
+  }else hl.cell=h.cell;
+  return hl;
+}
+
+function render(){
+  const s=S,sel=s.sel,selVal=sel>=0?s.val[sel]:0;
+  const ps=sel>=0?new Set(PEERS[sel]):null,hl=hintHL();
+  let left=0;
+  const counts=new Array(10).fill(0);
+  for(let i=0;i<81;i++){
+    const v=s.val[i];
+    if(v!==s.sol[i])left++;
+    if(v&&v===s.sol[i])counts[v]++;
+    let cls='cell'+(C[i]%3===2&&C[i]<8?' br':'')+(R[i]%3===2&&R[i]<8?' bb':'');
+    if(s.puz[i])cls+=' given';else if(v)cls+=' user';
+    if(!s.puz[i]&&v&&v!==s.sol[i])cls+=' wrong';
+    if(ps){
+      if(i===sel)cls+=' sel';else if(ps.has(i))cls+=' peer';
+      if(selVal&&v===selVal&&i!==sel)cls+=' same';
+    }
+    if(hl.unit.has(i))cls+=' hu';
+    if(i===hl.cell)cls+=' ht';
+    const el=cells[i];
+    if(el.className!==cls)el.className=cls;
+    const key=v+'|'+s.notes[i];
+    if(el._k!==key){
+      el._k=key;
+      el.innerHTML=v?String(v):(s.notes[i]?notesHtml(s.notes[i]):'');
+      el.setAttribute('aria-label','Ligne '+(R[i]+1)+', colonne '+(C[i]+1)+', '+(v?'valeur '+v:'vide'));
+    }
+  }
+  for(let d=1;d<=9;d++){
+    const rem=9-counts[d],k=keys[d-1];
+    k.querySelector('.kc').textContent=rem>0?rem:'';
+    k.disabled=rem<=0||s.done||s.busy;
+  }
+  $('timer').textContent=fmt(s.t);
+  $('sGiven').textContent=s.busy?'–':s.clues;
+  $('sLeft').textContent=s.busy?'–':left;
+  $('sMist').textContent=s.mistakes;
+  $('sHints').textContent=s.hints;
+  $('notesBtn').setAttribute('aria-pressed',s.notesOn?'true':'false');
+  const h=s.hint;
+  let lbl='Indice';
+  if(h)lbl=h.stage<h.info?'Indice +':(h.kind==='error'?'Corriger':'Placer');
+  $('hintLbl').textContent=lbl;
+  $('hintBtn').classList.toggle('live',!!h);
+  let text,cls='msg';
+  if(s.busy){text='Génération d’une grille expert…';}
+  else if(s.done){
+    text='Grille résolue en '+fmt(s.t)+'. '+s.mistakes+' erreur'+(s.mistakes>1?'s':'')+', '+s.hints+' indice'+(s.hints>1?'s':'')+'.';
+    cls+=' win';
+  }
+  else if(h){text=hintText(h);cls+=' hint';}
+  else if(s.flash){text=s.flash;}
+  else text='Touche une case, puis un chiffre. Le bouton Indice guide la prochaine étape, pas à pas.';
+  const m=$('msg');
+  if(m.textContent!==text)m.textContent=text;
+  m.className=cls;
+}
+
+function flash(t){
+  S.flash=t;render();
+  setTimeout(()=>{if(S.flash===t){S.flash='';render();}},2600);
+}
+function selectCell(i){
+  if(S.busy)return;
+  S.sel=i;render();
+}
+function push(){
+  S.hist.push({v:S.val.slice(),n:S.notes.slice()});
+  if(S.hist.length>300)S.hist.shift();
+}
+function checkWin(){
+  if(S.val.every((v,i)=>v===S.sol[i])){S.done=true;S.hint=null;}
+}
+function place(i,d){
+  S.val[i]=d;S.notes[i]=0;
+  for(const j of PEERS[i])S.notes[j]&=~(1<<d);
+}
+function setDigit(d){
+  if(S.busy||S.done)return;
+  const i=S.sel;
+  if(i<0){flash('Choisis d’abord une case.');return;}
+  if(S.puz[i])return;
+  if(S.notesOn){
+    if(S.val[i])return;
+    push();S.notes[i]^=(1<<d);S.hint=null;
+  }else{
+    push();S.hint=null;
+    if(S.val[i]===d){S.val[i]=0;}
+    else{
+      place(i,d);
+      if(d!==S.sol[i])S.mistakes++;
+      checkWin();
+    }
+  }
+  render();save();
+}
+function erase(){
+  if(S.busy||S.done)return;
+  const i=S.sel;
+  if(i<0||S.puz[i]||(!S.val[i]&&!S.notes[i]))return;
+  push();S.val[i]=0;S.notes[i]=0;S.hint=null;
+  render();save();
+}
+function undo(){
+  if(S.busy||S.done)return;
+  const h=S.hist.pop();
+  if(!h)return;
+  S.val=h.v;S.notes=h.n;S.hint=null;
+  render();save();
+}
+function toggleNotes(){
+  if(S.busy)return;
+  S.notesOn=!S.notesOn;render();
+}
+
+/* Indices : erreur d'abord, puis single caché / nu, sinon la case la plus contrainte */
+function makeHint(){
+  for(let i=0;i<81;i++){
+    if(!S.puz[i]&&S.val[i]&&S.val[i]!==S.sol[i])return {kind:'error',cell:i,v:S.sol[i],info:1};
+  }
+  const singles=findSingles(S.val);
+  if(singles.length){
+    const pr=s=>s.type==='naked'?2:(s.unit.kind==='box'?0:1);
+    singles.sort((a,b)=>pr(a)-pr(b));
+    const mine=singles.filter(s=>s.cell===S.sel);
+    const pick=(mine.length?mine:singles)[0];
+    if(pick.type==='hidden')return {kind:'hidden',cell:pick.cell,v:pick.v,unit:pick.unit,info:2};
+    return {kind:'naked',cell:pick.cell,v:pick.v,info:2};
+  }
+  const m=cands(S.val);
+  let best=-1,bn=10;
+  for(let i=0;i<81;i++){
+    if(!S.val[i]){const n=pc(m[i]);if(n<bn){bn=n;best=i;}}
+  }
+  return {kind:'tight',cell:best,v:S.sol[best],n:bn,info:1};
+}
+function applyHint(){
+  const h=S.hint;
+  push();
+  place(h.cell,h.v);
+  S.sel=h.cell;S.hint=null;
+  checkWin();
+  render();save();
+}
+function pressHint(){
+  if(S.busy||S.done)return;
+  if(!S.hint){
+    S.hint=makeHint();S.hint.stage=1;S.hints++;
+  }else if(S.hint.stage<S.hint.info){
+    S.hint.stage++;
+  }else{
+    applyHint();return;
+  }
+  render();save();
+}
+
+/* Nouvelle grille, avec confirmation dans la page */
+let confirmTimer=0;
+function newGame(){
+  clearTimeout(confirmTimer);
+  const b=$('newBtn');b.classList.remove('confirm');b.textContent='Nouvelle grille';
+  S=blank();render();
+  setTimeout(()=>{
+    const g=makePuzzle();
+    S=fresh(g);render();save();
+  },40);
+}
+function askNewGame(){
+  const inProgress=!S.busy&&!S.done&&S.val.some((v,i)=>v&&!S.puz[i]);
+  const b=$('newBtn');
+  if(S.busy)return;
+  if(!inProgress||b.classList.contains('confirm')){newGame();return;}
+  b.classList.add('confirm');b.textContent='Abandonner la grille ?';
+  confirmTimer=setTimeout(()=>{b.classList.remove('confirm');b.textContent='Nouvelle grille';},3500);
+}
+
+$('undoBtn').addEventListener('click',undo);
+$('eraseBtn').addEventListener('click',erase);
+$('notesBtn').addEventListener('click',toggleNotes);
+$('hintBtn').addEventListener('click',pressHint);
+$('newBtn').addEventListener('click',askNewGame);
+
+document.addEventListener('keydown',e=>{
+  if(e.metaKey||e.altKey)return;
+  if(e.ctrlKey){if(e.key==='z'){e.preventDefault();undo();}return;}
+  const k=e.key;
+  if(k>='1'&&k<='9'){setDigit(+k);return;}
+  if(k==='Backspace'||k==='Delete'||k==='0'){erase();return;}
+  if(k==='n'||k==='N'){toggleNotes();return;}
+  if(k==='h'||k==='H'){pressHint();return;}
+  const mv={ArrowUp:-9,ArrowDown:9,ArrowLeft:-1,ArrowRight:1}[k];
+  if(mv&&!S.busy){
+    e.preventDefault();
+    let i=S.sel<0?40:S.sel+mv;
+    if(k==='ArrowLeft'&&S.sel>=0&&C[S.sel]===0)i=S.sel;
+    if(k==='ArrowRight'&&S.sel>=0&&C[S.sel]===8)i=S.sel;
+    if(i<0||i>80)i=S.sel;
+    S.sel=i;render();cells[i].focus();
+  }
+});
+
+setInterval(()=>{
+  if(S.busy||S.done||document.hidden)return;
+  S.t++;
+  $('timer').textContent=fmt(S.t);
+  if(S.t%5===0)save();
+},1000);
+
+const saved=load();
+if(saved){S=saved;render();}
+else newGame();
+</script>
+<script>
+if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){});});}
+</script>
+</body>
+</html>
+
