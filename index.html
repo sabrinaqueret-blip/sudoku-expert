@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sudoku Expert</title>
-<meta name="description" content="Sudoku niveau expert avec indices progressifs, notes et chronomètre. Jouable hors ligne.">
+<meta name="description" content="Sudoku en quatre niveaux, de facile à expert, avec indices progressifs, notes et chronomètre. Jouable hors ligne.">
 <meta name="theme-color" content="#E3E9EB" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0E1316" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
@@ -149,13 +149,16 @@ h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
 .key:disabled{opacity:.3;cursor:default}
 .key.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 
-.foot{display:flex;justify-content:center}
-.newgame{background:transparent;border:1px solid var(--line-strong);border-radius:10px;padding:11px 18px;font-weight:600;font-size:14px}
-.newgame.confirm{background:var(--err);border-color:var(--err);color:#fff}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .newgame.confirm{color:#17262D}}
-:root[data-theme="dark"] .newgame.confirm{color:#17262D}
+.foot{display:flex;flex-direction:column;gap:8px}
+.footlabel{margin:0;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.levels{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.lv{background:transparent;border:1px solid var(--line-strong);border-radius:10px;height:44px;padding:0 2px;font-weight:600;font-size:13px}
+.lv[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.lv.confirm{background:var(--err);border-color:var(--err);color:#fff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .lv.confirm{color:#17262D}}
+:root[data-theme="dark"] .lv.confirm{color:#17262D}
 
-.tool:focus-visible,.key:focus-visible,.newgame:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.tool:focus-visible,.key:focus-visible,.lv:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 @media (prefers-reduced-motion: no-preference){
   .cell{transition:background-color .12s}
 }
@@ -168,7 +171,7 @@ h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
 
 <main class="app">
   <header class="top">
-    <div class="brand"><h1>Sudoku</h1><span class="level">Expert</span></div>
+    <div class="brand"><h1>Sudoku</h1><span class="level" id="levelChip">Expert</span></div>
     <div class="timer" id="timer" aria-label="Temps écoulé">00:00</div>
   </header>
 
@@ -204,7 +207,10 @@ h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
 
   <div class="pad" id="pad"></div>
 
-  <div class="foot"><button type="button" class="newgame" id="newBtn">Nouvelle grille</button></div>
+  <div class="foot">
+    <p class="footlabel">Nouvelle grille</p>
+    <div class="levels" id="levels" role="group" aria-label="Choisir un niveau"></div>
+  </div>
 </main>
 
 <script>
@@ -287,21 +293,43 @@ function singlesSolvable(p){
     g[s[0].cell]=s[0].v;
   }
 }
-/* Grille expert : peu de cases données, solution unique, impossible à finir avec les seuls singles */
-function makePuzzle(){
-  const t0=Date.now();let best=null;
+function nakedSolvable(p){
+  const g=p.slice();
+  for(;;){
+    if(g.every(x=>x))return true;
+    const m=cands(g);let hit=-1;
+    for(let i=0;i<81;i++){if(!g[i]&&pc(m[i])===1){hit=i;break;}}
+    if(hit<0)return false;
+    g[hit]=31-Math.clz32(m[hit]);
+  }
+}
+/* Niveaux : facile = cases à un seul candidat, moyen et difficile = singles, expert = au-delà des singles */
+const LEVELS={
+  facile:{label:'Facile',mode:'naked',target:40,max:44},
+  moyen:{label:'Moyen',mode:'singles',target:34,max:38},
+  difficile:{label:'Difficile',mode:'singles',target:26,max:31},
+  expert:{label:'Expert',mode:'advanced',target:24,max:27}
+};
+/* Un puzzle résoluble par déductions simples a forcément une solution unique */
+function makePuzzle(level){
+  const key=LEVELS[level]?level:'expert',L=LEVELS[key],t0=Date.now();let best=null;
   for(;;){
     const sol=search(new Array(81).fill(0),1,true).first;
     const p=sol.slice(),order=shuffle(Array.from({length:81},(_,i)=>i));
     let clues=81;
     for(const i of order){
-      if(clues<=24)break;
+      if(clues<=L.target)break;
       const keep=p[i];p[i]=0;
-      if(search(p,2,false).count!==1)p[i]=keep;else clues--;
+      let ok;
+      if(L.mode==='naked')ok=nakedSolvable(p);
+      else if(L.mode==='singles')ok=singlesSolvable(p);
+      else ok=search(p,2,false).count===1;
+      if(ok)clues--;else p[i]=keep;
     }
-    const ok=clues<=27&&!singlesSolvable(p);
-    if(ok)return {p:p,sol:sol,clues:clues};
-    if(!best||clues<best.clues)best={p:p.slice(),sol:sol,clues:clues};
+    const cur={p:p.slice(),sol:sol,clues:clues,level:key};
+    const hard=L.mode==='advanced'?!singlesSolvable(p):(L.mode==='naked'||!nakedSolvable(p));
+    if(clues<=L.max&&hard)return cur;
+    if(!best||clues<best.clues)best=cur;
     if(Date.now()-t0>3500)return best;
   }
 }
@@ -314,17 +342,17 @@ const BOXNAMES=['en haut à gauche','en haut au centre','en haut à droite','au 
 
 function blank(){
   return {puz:new Array(81).fill(0),sol:new Array(81).fill(0),val:new Array(81).fill(0),notes:new Array(81).fill(0),
-    sel:-1,focus:0,auto:false,notesOn:false,t:0,mistakes:0,hints:0,hist:[],hint:null,done:false,busy:true,flash:'',clues:0};
+    sel:-1,focus:0,auto:false,level:'expert',notesOn:false,t:0,mistakes:0,hints:0,hist:[],hint:null,done:false,busy:true,flash:'',clues:0};
 }
 let S=blank();
 function fresh(g){
   const s=blank();
-  s.puz=g.p.slice();s.val=g.p.slice();s.sol=g.sol.slice();s.clues=g.clues;s.busy=false;
+  s.puz=g.p.slice();s.val=g.p.slice();s.sol=g.sol.slice();s.clues=g.clues;s.level=g.level;s.busy=false;
   return s;
 }
 function save(){
   try{
-    localStorage.setItem(KEY,JSON.stringify({puz:S.puz,sol:S.sol,val:S.val,notes:S.notes,t:S.t,mistakes:S.mistakes,hints:S.hints,clues:S.clues,done:S.done}));
+    localStorage.setItem(KEY,JSON.stringify({puz:S.puz,sol:S.sol,val:S.val,notes:S.notes,t:S.t,mistakes:S.mistakes,hints:S.hints,clues:S.clues,level:S.level,done:S.done}));
   }catch(e){}
 }
 function load(){
@@ -333,7 +361,7 @@ function load(){
     if(j&&!j.done&&[j.puz,j.sol,j.val,j.notes].every(a=>Array.isArray(a)&&a.length===81)){
       const s=blank();
       s.puz=j.puz;s.sol=j.sol;s.val=j.val;s.notes=j.notes;
-      s.t=j.t|0;s.mistakes=j.mistakes|0;s.hints=j.hints|0;s.clues=j.clues|0;s.busy=false;
+      s.t=j.t|0;s.mistakes=j.mistakes|0;s.hints=j.hints|0;s.clues=j.clues|0;s.level=LEVELS[j.level]?j.level:'expert';s.busy=false;
       return s;
     }
   }catch(e){}
@@ -433,6 +461,8 @@ function render(){
     k.disabled=rem<=0||s.done||s.busy||s.auto;
   }
   $('timer').textContent=fmt(s.t);
+  $('levelChip').textContent=LEVELS[s.level].label;
+  lvBtns.forEach(b=>b.setAttribute('aria-pressed',b.dataset.l===s.level?'true':'false'));
   $('sGiven').textContent=s.busy?'–':s.clues;
   $('sLeft').textContent=s.busy?'–':left;
   $('sMist').textContent=s.mistakes;
@@ -446,7 +476,7 @@ function render(){
   let text,cls='msg';
   if(s.busy){text='Génération d’une grille expert…';}
   else if(s.done){
-    text='Grille résolue en '+fmt(s.t)+'. '+s.mistakes+' erreur'+(s.mistakes>1?'s':'')+', '+s.hints+' indice'+(s.hints>1?'s':'')+'.';
+    text='Grille '+LEVELS[s.level].label.toLowerCase()+' résolue en '+fmt(s.t)+'. '+s.mistakes+' erreur'+(s.mistakes>1?'s':'')+', '+s.hints+' indice'+(s.hints>1?'s':'')+'.';
     cls+=' win';
   }
   else if(h){text=hintText(h);cls+=' hint';}
@@ -579,24 +609,42 @@ function pressHint(){
   render();save();
 }
 
-/* Nouvelle grille, avec confirmation dans la page */
-let confirmTimer=0;
-function newGame(){
-  clearTimeout(confirmTimer);
-  const b=$('newBtn');b.classList.remove('confirm');b.textContent='Nouvelle grille';
-  S=blank();render();
+/* Nouvelle grille : un bouton par niveau, avec confirmation si une partie est en cours */
+let confirmTimer=0,pending='';
+const lvBtns=[];
+Object.keys(LEVELS).forEach(id=>{
+  const b=document.createElement('button');
+  b.type='button';b.className='lv';b.dataset.l=id;b.textContent=LEVELS[id].label;
+  b.setAttribute('aria-pressed','false');
+  b.addEventListener('click',()=>askNewGame(id));
+  $('levels').appendChild(b);lvBtns.push(b);
+});
+function lastLevel(){
+  try{const l=localStorage.getItem('sudoku-level');if(LEVELS[l])return l;}catch(e){}
+  return 'expert';
+}
+function resetConfirm(){
+  clearTimeout(confirmTimer);pending='';
+  lvBtns.forEach(b=>{b.classList.remove('confirm');b.textContent=LEVELS[b.dataset.l].label;});
+}
+function newGame(level){
+  resetConfirm();
+  try{localStorage.setItem('sudoku-level',level);}catch(e){}
+  S=blank();S.level=level;render();
   setTimeout(()=>{
-    const g=makePuzzle();
+    const g=makePuzzle(level);
     S=fresh(g);render();save();
   },40);
 }
-function askNewGame(){
-  const inProgress=!S.busy&&!S.done&&S.val.some((v,i)=>v&&!S.puz[i]);
-  const b=$('newBtn');
+function askNewGame(level){
   if(S.busy||S.auto)return;
-  if(!inProgress||b.classList.contains('confirm')){newGame();return;}
-  b.classList.add('confirm');b.textContent='Abandonner la grille ?';
-  confirmTimer=setTimeout(()=>{b.classList.remove('confirm');b.textContent='Nouvelle grille';},3500);
+  const inProgress=!S.done&&S.val.some((v,i)=>v&&!S.puz[i]);
+  if(!inProgress||pending===level){newGame(level);return;}
+  resetConfirm();pending=level;
+  const b=lvBtns.find(x=>x.dataset.l===level);
+  b.classList.add('confirm');b.textContent='Sûr ?';
+  flash('Touche encore ce niveau pour abandonner la grille en cours.');
+  confirmTimer=setTimeout(resetConfirm,3500);
 }
 
 $('undoBtn').addEventListener('click',undo);
@@ -604,7 +652,6 @@ $('eraseBtn').addEventListener('click',erase);
 $('notesBtn').addEventListener('click',toggleNotes);
 $('finishBtn').addEventListener('click',finishAuto);
 $('hintBtn').addEventListener('click',pressHint);
-$('newBtn').addEventListener('click',askNewGame);
 
 document.addEventListener('keydown',e=>{
   if(e.metaKey||e.altKey)return;
@@ -634,7 +681,7 @@ setInterval(()=>{
 
 const saved=load();
 if(saved){S=saved;render();}
-else newGame();
+else newGame(lastLevel());
 </script>
 <script>
 if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){});});}
