@@ -120,11 +120,15 @@ h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
   margin:0;min-height:4.4em;padding:10px 12px;border-radius:8px;
   background:var(--paper);border:1px solid var(--line);
   font-size:15px;line-height:1.4;text-wrap:pretty;
+  display:flex;align-items:center;gap:10px;
 }
+.msg span{flex:1;min-width:0}
+.finish{flex:none;background:var(--accent);color:var(--on-accent);border:0;border-radius:8px;padding:11px 14px;font-weight:700;font-size:14px}
+.finish:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
 .msg.hint{background:var(--hint-soft);border-color:var(--hint)}
 .msg.win{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
 
-.tools{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.tools{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .tool{
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
   height:58px;padding:0 4px;background:var(--btn);border:1px solid var(--line);border-radius:10px;
@@ -177,7 +181,7 @@ h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
 
   <div class="board" id="board" role="group" aria-label="Grille de Sudoku"></div>
 
-  <p class="msg" id="msg" role="status" aria-live="polite"></p>
+  <div class="msg" id="msg" role="status" aria-live="polite"><span id="msgText"></span><button type="button" class="finish" id="finishBtn" aria-label="Terminer la grille automatiquement" hidden>Terminer</button></div>
 
   <div class="tools">
     <button type="button" class="tool" id="undoBtn">
@@ -191,10 +195,6 @@ h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
     <button type="button" class="tool" id="notesBtn" aria-pressed="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
       <span>Notes</span>
-    </button>
-    <button type="button" class="tool" id="autoBtn">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
-      <span>Auto</span>
     </button>
     <button type="button" class="tool hintbtn" id="hintBtn">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
@@ -314,7 +314,7 @@ const BOXNAMES=['en haut à gauche','en haut au centre','en haut à droite','au 
 
 function blank(){
   return {puz:new Array(81).fill(0),sol:new Array(81).fill(0),val:new Array(81).fill(0),notes:new Array(81).fill(0),
-    sel:-1,focus:0,notesOn:false,t:0,mistakes:0,hints:0,hist:[],hint:null,done:false,busy:true,flash:'',clues:0};
+    sel:-1,focus:0,auto:false,notesOn:false,t:0,mistakes:0,hints:0,hist:[],hint:null,done:false,busy:true,flash:'',clues:0};
 }
 let S=blank();
 function fresh(g){
@@ -424,11 +424,13 @@ function render(){
       el.setAttribute('aria-label','Ligne '+(R[i]+1)+', colonne '+(C[i]+1)+', '+(v?'valeur '+v:'vide'));
     }
   }
+  const errs=s.val.some((v,i)=>!s.puz[i]&&v&&v!==s.sol[i]);
+  const can=!s.busy&&!s.done&&!s.auto&&!errs&&left>0&&singlesSolvable(s.val);
   for(let d=1;d<=9;d++){
     const rem=9-counts[d],k=keys[d-1];
     k.querySelector('.kc').textContent=rem>0?rem:'';
     k.classList.toggle('on',hd===d);
-    k.disabled=rem<=0||s.done||s.busy;
+    k.disabled=rem<=0||s.done||s.busy||s.auto;
   }
   $('timer').textContent=fmt(s.t);
   $('sGiven').textContent=s.busy?'–':s.clues;
@@ -449,11 +451,13 @@ function render(){
   }
   else if(h){text=hintText(h);cls+=' hint';}
   else if(s.flash){text=s.flash;}
+  else if(can){text='Plus aucun choix à faire : le reste de la grille se déduit directement.';}
   else if(s.focus){text='Le '+s.focus+' est en surbrillance : les cases claires sont les places encore possibles.';}
   else text='Touche une case, puis un chiffre. Le bouton Indice guide la prochaine étape, pas à pas.';
-  const m=$('msg');
-  if(m.textContent!==text)m.textContent=text;
+  const m=$('msg'),mt=$('msgText');
+  if(mt.textContent!==text)mt.textContent=text;
   m.className=cls;
+  $('finishBtn').hidden=!(can&&!h);
 }
 
 function flash(t){
@@ -461,7 +465,7 @@ function flash(t){
   setTimeout(()=>{if(S.flash===t){S.flash='';render();}},2600);
 }
 function selectCell(i){
-  if(S.busy)return;
+  if(S.busy||S.auto)return;
   S.sel=i;S.focus=0;render();
 }
 function push(){
@@ -476,7 +480,7 @@ function place(i,d){
   for(const j of PEERS[i])S.notes[j]&=~(1<<d);
 }
 function setDigit(d){
-  if(S.busy||S.done)return;
+  if(S.busy||S.done||S.auto)return;
   const i=S.sel;
   if(i<0){S.focus=S.focus===d?0:d;render();return;}
   if(S.puz[i])return;
@@ -495,33 +499,43 @@ function setDigit(d){
   render();save();
 }
 function erase(){
-  if(S.busy||S.done)return;
+  if(S.busy||S.done||S.auto)return;
   const i=S.sel;
   if(i<0||S.puz[i]||(!S.val[i]&&!S.notes[i]))return;
   push();S.val[i]=0;S.notes[i]=0;S.hint=null;
   render();save();
 }
 function undo(){
-  if(S.busy||S.done)return;
+  if(S.busy||S.done||S.auto)return;
   const h=S.hist.pop();
   if(!h)return;
   S.val=h.v;S.notes=h.n;S.hint=null;
   render();save();
 }
 function toggleNotes(){
-  if(S.busy)return;
+  if(S.busy||S.auto)return;
   S.notesOn=!S.notesOn;render();
 }
 
-/* Remplissage automatique des notes : tous les candidats des cases libres */
-function autoNotes(){
-  if(S.busy||S.done)return;
-  push();
-  const m=cands(S.val);
-  for(let i=0;i<81;i++)S.notes[i]=S.val[i]?0:m[i];
-  S.hint=null;
-  save();
-  flash('Notes remplies pour toutes les cases libres. Annule si tu préfères les tiennes.');
+/* Fin automatique : quand tout le reste se déduit sans choix, on pose les chiffres un à un */
+function finishAuto(){
+  if(S.busy||S.done||S.auto)return;
+  S.auto=true;S.hint=null;push();
+  const g=S.val.slice(),todo=[];
+  for(;;){
+    if(g.every(x=>x))break;
+    const s=findSingles(g);
+    if(!s.length)break;
+    g[s[0].cell]=s[0].v;todo.push(s[0]);
+  }
+  let k=0;
+  const step=()=>{
+    if(k>=todo.length){S.auto=false;checkWin();render();save();return;}
+    const t=todo[k++];
+    place(t.cell,t.v);S.sel=t.cell;render();
+    setTimeout(step,70);
+  };
+  step();
 }
 
 /* Indices : erreur d'abord, puis single caché / nu, sinon la case la plus contrainte */
@@ -554,7 +568,7 @@ function applyHint(){
   render();save();
 }
 function pressHint(){
-  if(S.busy||S.done)return;
+  if(S.busy||S.done||S.auto)return;
   if(!S.hint){
     S.hint=makeHint();S.hint.stage=1;S.hints++;
   }else if(S.hint.stage<S.hint.info){
@@ -579,7 +593,7 @@ function newGame(){
 function askNewGame(){
   const inProgress=!S.busy&&!S.done&&S.val.some((v,i)=>v&&!S.puz[i]);
   const b=$('newBtn');
-  if(S.busy)return;
+  if(S.busy||S.auto)return;
   if(!inProgress||b.classList.contains('confirm')){newGame();return;}
   b.classList.add('confirm');b.textContent='Abandonner la grille ?';
   confirmTimer=setTimeout(()=>{b.classList.remove('confirm');b.textContent='Nouvelle grille';},3500);
@@ -588,7 +602,7 @@ function askNewGame(){
 $('undoBtn').addEventListener('click',undo);
 $('eraseBtn').addEventListener('click',erase);
 $('notesBtn').addEventListener('click',toggleNotes);
-$('autoBtn').addEventListener('click',autoNotes);
+$('finishBtn').addEventListener('click',finishAuto);
 $('hintBtn').addEventListener('click',pressHint);
 $('newBtn').addEventListener('click',askNewGame);
 
