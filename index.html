@@ -124,7 +124,7 @@ h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
 .msg.hint{background:var(--hint-soft);border-color:var(--hint)}
 .msg.win{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
 
-.tools{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tools{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
 .tool{
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
   height:58px;padding:0 4px;background:var(--btn);border:1px solid var(--line);border-radius:10px;
@@ -143,6 +143,7 @@ h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
 .key .kd{font-family:var(--font-num);font-size:24px;font-weight:500;line-height:1}
 .key .kc{font-family:var(--font-num);font-size:10px;color:var(--muted);line-height:1;font-variant-numeric:tabular-nums}
 .key:disabled{opacity:.3;cursor:default}
+.key.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 
 .foot{display:flex;justify-content:center}
 .newgame{background:transparent;border:1px solid var(--line-strong);border-radius:10px;padding:11px 18px;font-weight:600;font-size:14px}
@@ -190,6 +191,10 @@ h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
     <button type="button" class="tool" id="notesBtn" aria-pressed="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
       <span>Notes</span>
+    </button>
+    <button type="button" class="tool" id="autoBtn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+      <span>Auto</span>
     </button>
     <button type="button" class="tool hintbtn" id="hintBtn">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
@@ -309,7 +314,7 @@ const BOXNAMES=['en haut à gauche','en haut au centre','en haut à droite','au 
 
 function blank(){
   return {puz:new Array(81).fill(0),sol:new Array(81).fill(0),val:new Array(81).fill(0),notes:new Array(81).fill(0),
-    sel:-1,notesOn:false,t:0,mistakes:0,hints:0,hist:[],hint:null,done:false,busy:true,flash:'',clues:0};
+    sel:-1,focus:0,notesOn:false,t:0,mistakes:0,hints:0,hist:[],hint:null,done:false,busy:true,flash:'',clues:0};
 }
 let S=blank();
 function fresh(g){
@@ -392,6 +397,10 @@ function hintHL(){
 function render(){
   const s=S,sel=s.sel,selVal=sel>=0?s.val[sel]:0;
   const ps=sel>=0?new Set(PEERS[sel]):null,hl=hintHL();
+  /* chiffre en surbrillance : celui de la case choisie, ou celui touché sur le pavé */
+  const hd=selVal||s.focus;
+  let cov=null;
+  if(hd){cov=new Set();for(let j=0;j<81;j++){if(s.val[j]===hd)for(const p of PEERS[j])cov.add(p);}}
   let left=0;
   const counts=new Array(10).fill(0);
   for(let i=0;i<81;i++){
@@ -401,10 +410,9 @@ function render(){
     let cls='cell'+(C[i]%3===2&&C[i]<8?' br':'')+(R[i]%3===2&&R[i]<8?' bb':'');
     if(s.puz[i])cls+=' given';else if(v)cls+=' user';
     if(!s.puz[i]&&v&&v!==s.sol[i])cls+=' wrong';
-    if(ps){
-      if(i===sel)cls+=' sel';else if(ps.has(i))cls+=' peer';
-      if(selVal&&v===selVal&&i!==sel)cls+=' same';
-    }
+    if(i===sel)cls+=' sel';
+    else if((ps&&ps.has(i))||(cov&&cov.has(i)))cls+=' peer';
+    if(hd&&v===hd&&i!==sel)cls+=' same';
     if(hl.unit.has(i))cls+=' hu';
     if(i===hl.cell)cls+=' ht';
     const el=cells[i];
@@ -419,6 +427,7 @@ function render(){
   for(let d=1;d<=9;d++){
     const rem=9-counts[d],k=keys[d-1];
     k.querySelector('.kc').textContent=rem>0?rem:'';
+    k.classList.toggle('on',hd===d);
     k.disabled=rem<=0||s.done||s.busy;
   }
   $('timer').textContent=fmt(s.t);
@@ -440,6 +449,7 @@ function render(){
   }
   else if(h){text=hintText(h);cls+=' hint';}
   else if(s.flash){text=s.flash;}
+  else if(s.focus){text='Le '+s.focus+' est en surbrillance : les cases claires sont les places encore possibles.';}
   else text='Touche une case, puis un chiffre. Le bouton Indice guide la prochaine étape, pas à pas.';
   const m=$('msg');
   if(m.textContent!==text)m.textContent=text;
@@ -452,7 +462,7 @@ function flash(t){
 }
 function selectCell(i){
   if(S.busy)return;
-  S.sel=i;render();
+  S.sel=i;S.focus=0;render();
 }
 function push(){
   S.hist.push({v:S.val.slice(),n:S.notes.slice()});
@@ -468,7 +478,7 @@ function place(i,d){
 function setDigit(d){
   if(S.busy||S.done)return;
   const i=S.sel;
-  if(i<0){flash('Choisis d’abord une case.');return;}
+  if(i<0){S.focus=S.focus===d?0:d;render();return;}
   if(S.puz[i])return;
   if(S.notesOn){
     if(S.val[i])return;
@@ -501,6 +511,17 @@ function undo(){
 function toggleNotes(){
   if(S.busy)return;
   S.notesOn=!S.notesOn;render();
+}
+
+/* Remplissage automatique des notes : tous les candidats des cases libres */
+function autoNotes(){
+  if(S.busy||S.done)return;
+  push();
+  const m=cands(S.val);
+  for(let i=0;i<81;i++)S.notes[i]=S.val[i]?0:m[i];
+  S.hint=null;
+  save();
+  flash('Notes remplies pour toutes les cases libres. Annule si tu préfères les tiennes.');
 }
 
 /* Indices : erreur d'abord, puis single caché / nu, sinon la case la plus contrainte */
@@ -567,6 +588,7 @@ function askNewGame(){
 $('undoBtn').addEventListener('click',undo);
 $('eraseBtn').addEventListener('click',erase);
 $('notesBtn').addEventListener('click',toggleNotes);
+$('autoBtn').addEventListener('click',autoNotes);
 $('hintBtn').addEventListener('click',pressHint);
 $('newBtn').addEventListener('click',askNewGame);
 
