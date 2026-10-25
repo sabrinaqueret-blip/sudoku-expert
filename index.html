@@ -453,7 +453,7 @@ function render(){
     }
   }
   const errs=s.val.some((v,i)=>!s.puz[i]&&v&&v!==s.sol[i]);
-  const can=!s.busy&&!s.done&&!s.auto&&!errs&&left>0&&singlesSolvable(s.val);
+  const can=!s.busy&&!s.done&&!s.auto&&!errs&&left>0&&left<=6&&singlesSolvable(s.val);
   for(let d=1;d<=9;d++){
     const rem=9-counts[d],k=keys[d-1];
     k.querySelector('.kc').textContent=rem>0?rem:'';

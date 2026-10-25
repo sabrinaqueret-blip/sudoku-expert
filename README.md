@@ -3,7 +3,7 @@
 Sudoku en quatre niveaux (facile, moyen, difficile, expert), installable sur téléphone (PWA) et jouable hors ligne.
 
 - Grilles générées à solution unique : de 40 cases données (facile) à 24-26 (expert)
-- Bouton « Terminer » quand le reste de la grille se déduit sans aucun choix
+- Bouton « Terminer » quand il reste 6 cases ou moins et que la fin se déduit sans aucun choix
 - Indices progressifs : la zone à regarder, puis la case et la raison, puis le chiffre
 - Notes au crayon, annulation, chronomètre, compteur d'erreurs
 - Partie sauvegardée automatiquement dans le navigateur
